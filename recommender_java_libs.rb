@@ -42,6 +42,7 @@ puts "START"
 data_model = FileDataModel.new(java.io.File.new('recommender_data.csv'))
 puts "data_model: #{data_model.inspect}"
 
+puts "Recommend for user"
 similarity = PearsonCorrelationSimilarity.new(data_model)
 puts "Similarity: #{similarity.inspect}"
 neighborhood_size = 3.0
@@ -52,4 +53,17 @@ puts "Recommender: #{recommender.inspect}"
 
 puts "RECOMMEND"
 
-recommender.recommend(2, 3, nil) # Recoomend to user 2. Number of recommendations - 3
+puts recommender.recommend(2, 3, nil) # Recoomend to user 2. Number of recommendations - 3
+
+puts "ITEMS"
+
+similarity = PearsonCorrelationSimilarity.new(data_model)
+puts "Similarity: #{similarity.inspect}"
+recommender = GenericItemBasedRecommender.new(data_model, similarity)
+puts "Recommender: #{recommender.inspect}"
+
+puts "SIMILLAR ITEMS"
+
+puts recommender.mostSimilarItems(14, 3, nil) # Items simillar to item 14. Return 3 items
+
+
