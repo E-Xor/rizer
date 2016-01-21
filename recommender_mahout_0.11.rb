@@ -6,10 +6,12 @@ puts "REQUIRES"
 include Java
 
 # Mahout
-require File.join(ENV["MAHOUT_DIR"], 'mahout-core-0.7.jar')
-require File.join(ENV["MAHOUT_DIR"], 'mahout-integration-0.7.jar')
-require File.join(ENV["MAHOUT_DIR"], 'mahout-math-0.7.jar')
-Dir.glob(File.join(ENV["MAHOUT_DIR"], 'lib/*.jar')).each { |d| require d }
+MAHOUT_DIR = "#{ENV["MAHOUT_DIR"]}/../apache-mahout-distribution-0.11.1/"
+require "#{MAHOUT_DIR}/mahout-hdfs-0.11.1.jar"
+require "#{MAHOUT_DIR}/mahout-mr-0.11.1.jar"
+require "#{MAHOUT_DIR}/mahout-integration-0.11.1.jar"
+require "#{MAHOUT_DIR}/mahout-math-0.11.1.jar"
+Dir.glob("#{MAHOUT_DIR}/lib/*.jar").each { |d| require d }
 
 # For FileDataModel
 java_import org.apache.mahout.cf.taste.impl.model.file.FileDataModel
@@ -28,7 +30,6 @@ java_import org.apache.mahout.cf.taste.impl.neighborhood.ThresholdUserNeighborho
 
 java_import org.apache.mahout.cf.taste.impl.recommender.GenericUserBasedRecommender
 java_import org.apache.mahout.cf.taste.impl.recommender.GenericItemBasedRecommender
-java_import org.apache.mahout.cf.taste.impl.recommender.slopeone.SlopeOneRecommender
 
 java_import org.apache.mahout.cf.taste.common.Weighting
 
