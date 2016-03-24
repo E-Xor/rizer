@@ -6,6 +6,7 @@ puts "REQUIRES"
 include Java
 
 # Mahout
+# MAHOUT_DIR was pointed to /root/ml/mahout-distribution-0.7
 require File.join(ENV["MAHOUT_DIR"], 'mahout-core-0.7.jar')
 require File.join(ENV["MAHOUT_DIR"], 'mahout-integration-0.7.jar')
 require File.join(ENV["MAHOUT_DIR"], 'mahout-math-0.7.jar')

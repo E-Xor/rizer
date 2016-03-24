@@ -3,7 +3,7 @@
 include Java
 $CLASSPATH << "jars/postgresql-9.4.1207.jre7.jar"
 
-require 'jruby_mahout'
+require 'jruby_mahout' # MAHOUT_DIR was pointed to /root/ml/mahout-distribution-0.7
 
 puts "START"
 

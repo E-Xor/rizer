@@ -6,7 +6,8 @@ puts "REQUIRES"
 include Java
 
 # Mahout
-MAHOUT_DIR = "#{ENV["MAHOUT_DIR"]}/../apache-mahout-distribution-0.11.1/"
+# MAHOUT_DIR should be pointed to /root/ml/apache-mahout-distribution-0.11.1
+MAHOUT_DIR = ENV["MAHOUT_DIR"]
 require "#{MAHOUT_DIR}/mahout-hdfs-0.11.1.jar"
 require "#{MAHOUT_DIR}/mahout-mr-0.11.1.jar"
 require "#{MAHOUT_DIR}/mahout-integration-0.11.1.jar"
