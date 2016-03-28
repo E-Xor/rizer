@@ -40,6 +40,7 @@ java_import org.apache.mahout.cf.taste.common.Weighting
 
 puts "START"
 
+# Data format shold be: userN, itemN, preference
 data_model = FileDataModel.new(java.io.File.new('recommender_data.csv'))
 puts "data_model: #{data_model.inspect}"
 
