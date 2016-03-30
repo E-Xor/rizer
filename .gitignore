@@ -1,2 +1,5 @@
 Gemfile.lock
 .DS_store
+
+# Actual configs
+/config/*.yml
