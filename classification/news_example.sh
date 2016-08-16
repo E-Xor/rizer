@@ -56,3 +56,53 @@ hdfs dfs -rm -r -f /temp
         -ow \
         -o /news-testing-no-c > /root/mounts/mahout-examples/news-testing-no-c.txt 2>&1
 
+# Different categories in train and test
+hdfs dfs -mkdir /news-split-test
+hdfs dfs -mkdir /news-split-train
+hdfs dfs -put /root/mounts/mahout-examples/20news-bydate-split/20news-bydate-test/* /news-split-test
+hdfs dfs -put /root/mounts/mahout-examples/20news-bydate-split/20news-bydate-train/* /news-split-train
+
+./mahout seqdirectory -i /news-split-test -o /news-split-seq-test -ow -xm sequential
+./mahout seqdirectory -i /news-split-train -o /news-split-seq-train -ow -xm sequential
+
+# ./mahout seq2sparse -i /news-split-seq-test -o /news-split-vectors-test -lnorm -nv -wt tfidf
+# ./mahout seq2sparse -i /news-split-seq-train -o /news-split-vectors-train -lnorm -nv -wt tfidf
+
+./mahout seq2sparse -i /news-split-seq-train -o /news-split-vectors-train --maxDFPercent 100
+./mahout seq2sparse -i /news-split-seq-test -o /news-split-vectors-test --maxDFPercent 100
+
+hdfs dfs -rm -r -f /temp
+./mahout trainnb \
+        -i /news-split-vectors-train/tfidf-vectors \
+        -o /news-split-model \
+        -li /news-split-labelindex \
+        -ow \
+        -c
+
+# Test is specifically to run on the same dataset as train, not to categorise external data
+# ./mahout testnb \
+#         -i /news-split-vectors-test/tfidf-vectors \
+#         -m /news-split-model \
+#         -l /news-split-labelindex \
+#         -ow \
+#         -o /news-split-testing \
+#         -c > /root/mounts/mahout-examples/news-split-testing.txt 2>&1
+
+# ./mahout org.apache.mahout.classifier.Classify \
+#   -m /home/hanish/opt/20news-bydate/bayes-model \
+#   --classify /home/hanish/name.txt \
+#   -ng 1 \
+#   -type bayes \
+#   -a org.apache.mahout.vectorizer.DefaultAnalyzer \
+#   --encoding UTF-8 \
+#   --defaultCat unknown \
+#   -source hdfs \
+# > /root/mounts/mahout-examples/news-split-testing.txt 2>&1
+
+./mahout org.apache.mahout.classifier.Classify \
+  -m /news-split-model \
+  --classify /news-split-test/76115 \
+  -type bayes \
+  -a org.apache.mahout.vectorizer.DefaultAnalyzer
+
+
