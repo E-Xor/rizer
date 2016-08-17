@@ -22,7 +22,8 @@ java_import org.apache.mahout.cf.taste.impl.similarity.PearsonCorrelationSimilar
 java_import org.apache.mahout.cf.taste.impl.similarity.EuclideanDistanceSimilarity
 java_import org.apache.mahout.cf.taste.impl.similarity.SpearmanCorrelationSimilarity
 java_import org.apache.mahout.cf.taste.impl.similarity.LogLikelihoodSimilarity
-java_import org.apache.mahout.cf.taste.impl.similarity.TanimotoCoefficientSimilarity
+java_import org.apache.mahout.cf.taste.impl.similarity.TanimotoCoefficientSimilarity # Ignores rating column
+java_import org.apache.mahout.cf.taste.impl.similarity.GenericItemSimilarity
 
 java_import org.apache.mahout.cf.taste.impl.neighborhood.NearestNUserNeighborhood
 java_import org.apache.mahout.cf.taste.impl.neighborhood.ThresholdUserNeighborhood
@@ -32,23 +33,6 @@ java_import org.apache.mahout.cf.taste.impl.recommender.GenericItemBasedRecommen
 
 java_import org.apache.mahout.cf.taste.common.Weighting
 
-
-# java_import org.apache.mahout.cf.taste.impl.model.jdbc.PostgreSQLJDBCDataModel
-# java_import org.postgresql.ds.PGPoolingDataSource
-# @data_model = PostgreSQLJDBCDataModel.new(@data_source, params[:table_name], "user_id", "item_id", "rating", "created")
-
-# https://github.com/vasinov/jruby_mahout/blob/master/lib/jruby_mahout/postgres_manager.rb
-
-# MysqlDataSource dataSource = new MysqlDataSource();
-# dataSource.setServerName("my_database_host");
-# dataSource.setUser("my_user");
-# dataSource.setPassword("my_password");
-# dataSource.setDatabaseName("my_database_name");
-
-# JDBCDataModel dataModel = new MySQLJDBCDataModel(
-#     dataSource, "my_prefs_table", "my_user_column",
-#     "my_item_column", "my_pref_value_column", "my_timestamp_column");
-
 # java_import org.apache.logging.log4j
 # require "/usr/share/java/log4j-1.2.jar"
 
@@ -57,16 +41,15 @@ java_import org.apache.mahout.cf.taste.common.Weighting
 # log4j.appender.stdout.layout=org.apache.log4j.PatternLayout
 # log4j.appender.stdout.layout.ConversionPattern="%d [%t] %-5p %c - %m%n"
 
-puts "MySQL imports"
+puts "MySQL"
 java_import org.apache.mahout.cf.taste.impl.model.jdbc.MySQLJDBCDataModel
-# apt-get install libmysql-java -y
+java_import org.apache.mahout.cf.taste.impl.model.jdbc.ReloadFromJDBCDataModel
+# apt-get install libmysql-java mysql-client -y
 # CLASSPATH=$CLASSPATH:/usr/share/java/
 # export CLASSPATH
 java_import com.mysql.jdbc.jdbc2.optional.MysqlDataSource
 
-puts "DB Config"
 db_config = YAML::load(IO.read('config/database.yml'))
-puts db_config.inspect
 data_source = MysqlDataSource.new()
 data_source.setUser(db_config['username'])
 data_source.setPassword(db_config['password'])
@@ -74,34 +57,55 @@ data_source.setServerName(db_config['host'])
 data_source.setPortNumber(db_config['port'])
 data_source.setDatabaseName(db_config['database'])
 
-puts "Execute"
 # CREATE VIEW v_recommender_data_source AS
 # SELECT user_id, profile_id AS item_id, COUNT(*) AS rating, created_at FROM profile_views
 # WHERE user_id IS NOT NULL AND profile_id > 0
 # GROUP BY CONCAT(user_id, '_', profile_id) ORDER BY rating DESC
-data_model = MySQLJDBCDataModel.new(data_source, "v_recommender_data_source", "user_id", "item_id", "rating", "created_at")
-puts data_model.inspect
 
+# CREATE TABLE t_recommender_data_source AS
+# SELECT user_id, profile_id AS item_id, COUNT(*) AS rating FROM profile_views
+# WHERE user_id IS NOT NULL AND profile_id > 0
+# GROUP BY CONCAT(user_id, '_', profile_id) ORDER BY rating DESC;
+data_model = ReloadFromJDBCDataModel.new(MySQLJDBCDataModel.new(data_source, "t_recommender_data_source", "user_id", "item_id", "rating", nil))
+# ReloadFromJDBCDataModel
+
+# data_model = FileDataModel.new(java.io.File.new(File.expand_path(File.dirname(__FILE__)) + '/audit_dev_for_rec.csv'))
+
+
+puts "SIMILLAR ITEMS"
 similarity = PearsonCorrelationSimilarity.new(data_model)
-puts "Similarity: #{similarity.inspect}"
-neighborhood_size = 3.0
-neighborhood = NearestNUserNeighborhood.new(Integer(neighborhood_size), similarity, data_model)
-puts "Neighborhood: #{neighborhood.inspect}"
+recommender = GenericItemBasedRecommender.new(data_model, similarity)
+puts "Refresh..."
+recommender.refresh(nil);
+puts recommender.mostSimilarItems(1602, 3, nil) # Items simillar to item <FIRST ARG>. Return <SECOND ARG> items
+# 2:49PM
+
+# similarity = PearsonCorrelationSimilarity.new(data_model)
+similarity = TanimotoCoefficientSimilarity.new(data_model)
+neighborhood = NearestNUserNeighborhood.new(10, similarity, data_model) # <FIRST ARG> is nearest N users to a given user.
 recommender = GenericUserBasedRecommender.new(data_model, neighborhood, similarity)
-puts "Recommender: #{recommender.inspect}"
+
+puts "Refresh..."
+recommender.refresh(nil);
 
 puts "RECOMMEND"
 
-puts recommender.recommend(59537, 3, nil) # Recoomend to user 2. Number of recommendations - 3
+puts "Recommend 1. #{Time.now}"
+puts recommender.recommend(46117, 3, nil) # Recoomend to user <FIRST ARG>. Number of recommendations - <SECOND ARG>
+puts "Recommend 2. #{Time.now}"
+puts recommender.recommend(23221, 3, nil) # Recoomend to user <FIRST ARG>. Number of recommendations - <SECOND ARG>
+puts "Recommend 3. #{Time.now}"
+puts recommender.recommend(59210, 3, nil) # Recoomend to user <FIRST ARG>. Number of recommendations - <SECOND ARG>
+puts "Recommend 4. #{Time.now}"
+puts recommender.recommend(191814, 3, nil) # Recoomend to user <FIRST ARG>. Number of recommendations - <SECOND ARG>
 
-puts "ITEMS"
 
-similarity = PearsonCorrelationSimilarity.new(data_model)
-puts "Similarity: #{similarity.inspect}"
-recommender = GenericItemBasedRecommender.new(data_model, similarity)
-puts "Recommender: #{recommender.inspect}"
 
-puts "SIMILLAR ITEMS"
+# Load array from DB via AR or something
+# Check dates in current algorythms and query same periods
+# Figure out rating
+# Run different algorythms for the same user, uniq results
+# Log user and number of recommendations given
+# Join profile names to test
 
-puts recommender.mostSimilarItems(11059, 3, nil) # Items simillar to item 14. Return 3 items
 
