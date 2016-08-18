@@ -40,6 +40,7 @@ java_import org.apache.mahout.cf.taste.common.Weighting
 # log4j.appender.stdout=org.apache.log4j.ConsoleAppender
 # log4j.appender.stdout.layout=org.apache.log4j.PatternLayout
 # log4j.appender.stdout.layout.ConversionPattern="%d [%t] %-5p %c - %m%n"
+# setLogWriter?
 
 puts "MySQL"
 java_import org.apache.mahout.cf.taste.impl.model.jdbc.MySQLJDBCDataModel
@@ -56,51 +57,50 @@ data_source.setPassword(db_config['password'])
 data_source.setServerName(db_config['host'])
 data_source.setPortNumber(db_config['port'])
 data_source.setDatabaseName(db_config['database'])
+data_source.setLogWriter(nil)
 
-# CREATE VIEW v_recommender_data_source AS
-# SELECT user_id, profile_id AS item_id, COUNT(*) AS rating, created_at FROM profile_views
-# WHERE user_id IS NOT NULL AND profile_id > 0
-# GROUP BY CONCAT(user_id, '_', profile_id) ORDER BY rating DESC
+# require 'yaml'
+# require 'active_record'
+# require 'bundler/setup'
+# require 'rison'
 
-# CREATE TABLE t_recommender_data_source AS
-# SELECT user_id, profile_id AS item_id, COUNT(*) AS rating FROM profile_views
-# WHERE user_id IS NOT NULL AND profile_id > 0
-# GROUP BY CONCAT(user_id, '_', profile_id) ORDER BY rating DESC;
-data_model = ReloadFromJDBCDataModel.new(MySQLJDBCDataModel.new(data_source, "t_recommender_data_source", "user_id", "item_id", "rating", nil))
-# ReloadFromJDBCDataModel
+# puts "Connecting to DB..."
+# db_config = YAML::load(IO.read('config/database.yml'))
+# ActiveRecord::Base.establish_connection(db_config)
 
-# data_model = FileDataModel.new(java.io.File.new(File.expand_path(File.dirname(__FILE__)) + '/audit_dev_for_rec.csv'))
+# ActiveRecord::Base.connection.execute('
+#   DROP VIEW v_recommender_data_source;
+# ')
+# ActiveRecord::Base.connection.execute('
+#   CREATE VIEW v_recommender_data_source AS
+#   SELECT user_id, profile_id, COUNT(*) AS rating FROM profile_views
+#   WHERE user_id IS NOT NULL AND profile_id > 0
+#   GROUP BY CONCAT(user_id, '_', profile_id) ORDER BY rating DESC;
+# ')
 
+data_model = ReloadFromJDBCDataModel.new(MySQLJDBCDataModel.new(data_source, "v_recommender_data_source", "user_id", "profile_id", "rating", nil))
 
 puts "SIMILLAR ITEMS"
 similarity = PearsonCorrelationSimilarity.new(data_model)
 recommender = GenericItemBasedRecommender.new(data_model, similarity)
-puts "Refresh..."
-recommender.refresh(nil);
-puts recommender.mostSimilarItems(1602, 3, nil) # Items simillar to item <FIRST ARG>. Return <SECOND ARG> items
-# 2:49PM
+similarItems = recommender.mostSimilarItems(1602, 10, nil) # Items simillar to item <FIRST ARG>. Return <SECOND ARG> items
+similarItems.each{|s| print "#{s.getItemID},"}; puts;
 
-# similarity = PearsonCorrelationSimilarity.new(data_model)
-similarity = TanimotoCoefficientSimilarity.new(data_model)
-neighborhood = NearestNUserNeighborhood.new(10, similarity, data_model) # <FIRST ARG> is nearest N users to a given user.
+similarity = PearsonCorrelationSimilarity.new(data_model)
+# similarity = TanimotoCoefficientSimilarity.new(data_model)
+neighborhood = NearestNUserNeighborhood.new(20, similarity, data_model) # <FIRST ARG> is nearest N users to a given user.
 recommender = GenericUserBasedRecommender.new(data_model, neighborhood, similarity)
-
-puts "Refresh..."
-recommender.refresh(nil);
 
 puts "RECOMMEND"
 
-puts "Recommend 1. #{Time.now}"
-puts recommender.recommend(46117, 3, nil) # Recoomend to user <FIRST ARG>. Number of recommendations - <SECOND ARG>
-puts "Recommend 2. #{Time.now}"
-puts recommender.recommend(23221, 3, nil) # Recoomend to user <FIRST ARG>. Number of recommendations - <SECOND ARG>
-puts "Recommend 3. #{Time.now}"
-puts recommender.recommend(59210, 3, nil) # Recoomend to user <FIRST ARG>. Number of recommendations - <SECOND ARG>
-puts "Recommend 4. #{Time.now}"
-puts recommender.recommend(191814, 3, nil) # Recoomend to user <FIRST ARG>. Number of recommendations - <SECOND ARG>
+# puts recommender.recommend(46117, 10, nil) # Recoomend to user <FIRST ARG>. Number of recommendations - <SECOND ARG>
+recommender.recommend(46117, 10, nil).each{|s| print "#{s.getItemID},"}; puts;
+recommender.recommend(23221, 10, nil).each{|s| print "#{s.getItemID},"}; puts;
+recommender.recommend(59210, 10, nil).each{|s| print "#{s.getItemID},"}; puts;
+recommender.recommend(191814, 10, nil).each{|s| print "#{s.getItemID},"}; puts;
 
-
-
+# 1 month
+# separately company, brand, agency_id
 # Load array from DB via AR or something
 # Check dates in current algorythms and query same periods
 # Figure out rating
@@ -108,4 +108,16 @@ puts recommender.recommend(191814, 3, nil) # Recoomend to user <FIRST ARG>. Numb
 # Log user and number of recommendations given
 # Join profile names to test
 
+# SELECT v.*, c.company_name, a.agency_name, b.companybrand_name
+# FROM `v_recommender_data_source` v
+# LEFT JOIN tlo_dev.imp_company c ON (v.profile_id = c.company_id)
+# LEFT JOIN tlo_dev.imp_company_brand b ON (v.profile_id = b.brand_id)
+# LEFT JOIN tlo_dev.imp_agency a ON (v.profile_id = a.agency_id)
+# WHERE v.user_id=59210;
+
+# SELECT company_name FROM tlo_dev.imp_company WHERE company_id IN (57437,22979,13085,296559,26261,6891,12513,16641,67209)
+# UNION
+# SELECT companybrand_name FROM tlo_dev.imp_company_brand WHERE brand_id IN (57437,22979,13085,296559,26261,6891,12513,16641,67209)
+# UNION
+# SELECT agency_name FROM tlo_dev.imp_agency WHERE agency_id IN (57437,22979,13085,296559,26261,6891,12513,16641,67209);
 
