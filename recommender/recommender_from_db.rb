@@ -58,34 +58,45 @@ require 'bundler/setup'
 puts "Connecting to DB..."
 # db_config = YAML::load(IO.read('config/database.yml'))
 ActiveRecord::Base.establish_connection(db_config)
+STDOUT.sync = true
 
-ActiveRecord::Base.connection.execute('
-  DROP VIEW v_recommender_media_brand;
-  DROP VIEW v_recommender_media_company;
-  DROP VIEW v_recommender_media_agency;
-  DROP VIEW v_recommender_agency_brand;
-  DROP VIEW v_recommender_agency_company;
-  DROP VIEW v_recommender_agency_agency;
-')
+puts "Drops"
+benchmark_start = Time.now
+ActiveRecord::Base.connection.execute('DROP VIEW IF EXISTS v_recommender__')
+ActiveRecord::Base.connection.execute('DROP VIEW IF EXISTS v_recommender_media_brand')
+ActiveRecord::Base.connection.execute('DROP VIEW IF EXISTS v_recommender_media_company')
+ActiveRecord::Base.connection.execute('DROP VIEW IF EXISTS v_recommender_media_agency')
+ActiveRecord::Base.connection.execute('DROP VIEW IF EXISTS v_recommender_agency_brand')
+ActiveRecord::Base.connection.execute('DROP VIEW IF EXISTS v_recommender_agency_company')
+ActiveRecord::Base.connection.execute('DROP VIEW IF EXISTS v_recommender_agency_agency')
+puts(Time.now - benchmark_start)
 
 def v_recomender_sql(client_type: :media, profile_type: :brand, days_ago: 30)
-  
   case profile_type
   when :company
-    join_table = 'imp_company'
-    join_id = 'company_id'
+    join_table         = 'imp_company'
+    join_id            = 'company_id'
+    where_profile_type = 'Company'
   when :brand
-    join_table = 'imp_company'
-    join_id = 'company_id'
+    join_table         = 'imp_company_brand'
+    join_id            = 'brand_id'
+    where_profile_type = 'Brand'
   when :agency
-    join_table = 'imp_company'
-    join_id = 'company_id'
+    join_table         = 'imp_agency'
+    join_id            = 'agency_id'
+    where_profile_type = 'Agency'
   end
 
+  profile_type_subquery = ''
   if join_table && join_id
-    profile_type_subquery = "INNER JOIN tlo_dev.#{join_table} jt ON (jt.#{join_id}=p.profile_id)"
+    profile_type_join_subquery = " INNER JOIN tlo_dev.#{join_table} jt ON (jt.#{join_id}=p.profile_id)"
+    profile_type_where_subquery = " INNER JOIN tlo_dev.#{join_table} jt ON (jt.#{join_id}=p.profile_id)"
   end
 
+  profile_type_where_subquery = ''
+  if where_profile_type
+    profile_type_where_subquery = " AND profile_type='#{where_profile_type}'"
+  end
 
   client_type_subquery = ''
   case client_type
@@ -95,7 +106,7 @@ def v_recomender_sql(client_type: :media, profile_type: :brand, days_ago: 30)
     client_type_subquery = " AND user_id     IN (SELECT DISTINCT(user_id) FROM tlo_dev.fm_users INNER JOIN tlo_dev.fm_accounts USING(account_id) WHERE category='Agency')"
   end
 
-   since_time_subquery = ''
+  since_time_subquery = ''
   if days_ago > 0
     start_time  = (Time.now - days_ago.days).to_s(:db)
     since_time_subquery = "AND p.created_at >= '#{start_time}'"
@@ -104,23 +115,47 @@ def v_recomender_sql(client_type: :media, profile_type: :brand, days_ago: 30)
   sql_string = "
     CREATE VIEW audit_dev.v_recommender_#{client_type}_#{profile_type} AS
     SELECT user_id, profile_id, COUNT(*) AS rating FROM audit_dev.profile_views p
-    #{profile_type_subquery}
-    WHERE profile_id > 0
+    #{profile_type_join_subquery}
+    WHERE profile_id > 0 AND user_id IS NOT NULL #{profile_type_where_subquery}
     #{client_type_subquery}
     #{since_time_subquery}
     GROUP BY CONCAT(user_id, '_', profile_id) ORDER BY rating DESC;
   "
+  puts sql_string
+
+  return sql_string
 end
 
-ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: nil,     profile_type: nil,      days_ago: 0))
-ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :media,  profile_type: :company, days_ago: 0))
-ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :media,  profile_type: :brand,   days_ago: 0))
-ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :media,  profile_type: :agency,  days_ago: 0))
-ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :agency, profile_type: :company, days_ago: 0))
-ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :agency, profile_type: :brand,   days_ago: 0))
-ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :agency, profile_type: :agency,  days_ago: 0))
+puts(Time.now - benchmark_start)
 
-abort
+puts "Pure"
+ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: nil,     profile_type: nil,      days_ago: 0))
+puts(Time.now - benchmark_start)
+
+puts "Media. Company."
+ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :media,  profile_type: :company, days_ago: 0))
+puts(Time.now - benchmark_start)
+
+puts "Media. Brand."
+ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :media,  profile_type: :brand,   days_ago: 0))
+puts(Time.now - benchmark_start)
+
+puts "Media. Agency."
+ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :media,  profile_type: :agency,  days_ago: 0))
+puts(Time.now - benchmark_start)
+
+puts "Agency. Company."
+ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :agency, profile_type: :company, days_ago: 0))
+puts(Time.now - benchmark_start)
+
+puts "Agency. Brand."
+ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :agency, profile_type: :brand,   days_ago: 0))
+puts(Time.now - benchmark_start)
+
+puts "Agency. Agency."
+ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :agency, profile_type: :agency,  days_ago: 0))
+puts(Time.now - benchmark_start)
+
 
 # ActiveRecord::Base.connection.execute('
   # CREATE VIEW v_recommender_data_source AS
@@ -135,13 +170,15 @@ abort
 # WHERE user_id IS NOT NULL AND profile_id > 0
 # GROUP BY CONCAT(user_id, '_', profile_id) ORDER BY rating DESC;
 
-data_model = ReloadFromJDBCDataModel.new(MySQLJDBCDataModel.new(data_source, "v_recommender_company", "user_id", "profile_id", "rating", nil))
+data_model = ReloadFromJDBCDataModel.new(MySQLJDBCDataModel.new(data_source, "v_recommender_media_company", "user_id", "profile_id", "rating", nil))
 
 puts "SIMILLAR ITEMS"
 similarity = PearsonCorrelationSimilarity.new(data_model)
 recommender = GenericItemBasedRecommender.new(data_model, similarity)
 similarItems = recommender.mostSimilarItems(1602, 10, nil) # Items simillar to item <FIRST ARG>. Return <SECOND ARG> items
 similarItems.each{|s| print "#{s.getItemID},"}; puts;
+
+abort
 
 similarity = PearsonCorrelationSimilarity.new(data_model)
 # similarity = TanimotoCoefficientSimilarity.new(data_model)
