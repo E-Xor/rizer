@@ -17,7 +17,6 @@ puts "IMPORTS"
 # java_import org.apache.mahout.cf.taste.impl.model.file.FileDataModel
 
 # For Recommender
-#java_import org.apache.mahout.cf.taste.eval.RecommenderBuilder
 
 # Similarities http://archive-primary.cloudera.com/cdh4/cdh/4/mahout-0.7-cdh4.3.2/mahout-core/index.html?org/apache/mahout/cf/taste/impl/neighborhood/ThresholdUserNeighborhood.html
 java_import org.apache.mahout.cf.taste.impl.similarity.PearsonCorrelationSimilarity
@@ -52,7 +51,6 @@ data_source.setServerName(db_config['host'])
 data_source.setPortNumber(db_config['port'])
 data_source.setDatabaseName(db_config['database'])
 
-require 'yaml'
 require 'active_record'
 require 'bundler/setup'
 # require 'rison'
@@ -61,7 +59,7 @@ puts "Connecting to DB..."
 # db_config = YAML::load(IO.read('config/database.yml'))
 ActiveRecord::Base.establish_connection(db_config)
 
-puts "Drops"
+# puts "Drops"
 # ActiveRecord::Base.connection.execute('DROP VIEW IF EXISTS v_recommender__;')
 # ActiveRecord::Base.connection.execute('DROP VIEW IF EXISTS v_recommender_media_brand;')
 # ActiveRecord::Base.connection.execute('DROP VIEW IF EXISTS v_recommender_media_company;')
@@ -107,7 +105,7 @@ def v_recomender_sql(client_type: :media, profile_type: :brand, days_ago: 90)
 
   since_time_subquery = ''
   if days_ago > 0
-    start_time  = Time.parse('2016-01-26').to_s(:db) #(Time.now - days_ago.days).to_s(:db)
+    start_time  = Time.parse('2016-01-26').strftime("%F %T") #(Time.now - days_ago.days).strftime("%F %T")
     since_time_subquery = "AND p.created_at >= '#{start_time}'"
   end
 
@@ -126,12 +124,12 @@ def v_recomender_sql(client_type: :media, profile_type: :brand, days_ago: 90)
 end
 
 puts "Media. Company."
-#ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :media,  profile_type: :company, days_ago: 0))
+# ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :media,  profile_type: :company, days_ago: 90))
 
 data_model = ReloadFromJDBCDataModel.new(MySQLJDBCDataModel.new(data_source, "v_recommender_media_company", "user_id", "profile_id", "rating", nil))
 
-similarity  = EuclideanDistanceSimilarity.new(data_model)
-similarity2 = PearsonCorrelationSimilarity.new(data_model)
+similarity  = EuclideanDistanceSimilarity.new(data_model, Weighting::WEIGHTED) # OR (data_model, Weighting::WEIGHTED)
+similarity2 = PearsonCorrelationSimilarity.new(data_model, Weighting::WEIGHTED) # OR (data_model, Weighting::WEIGHTED)
 neighborhood  = NearestNUserNeighborhood.new(20, similarity, data_model) # <FIRST ARG> is nearest N users to a given user.
 neighborhood2 = NearestNUserNeighborhood.new(20, similarity2, data_model) # <FIRST ARG> is nearest N users to a given user.
 recommender =  GenericUserBasedRecommender.new(data_model, neighborhood, similarity)
@@ -161,26 +159,26 @@ puts "User count: #{users.count}\n"
 no_rec_users = []
 insert_sql = ''
 users.each_with_index do |u, i|
-begin
-  print "\r#{i+1} / #{users.count}"
+  begin
+    print "\r#{i+1} / #{users.count}"
 
-  recs  = recommender.recommend(u.first, 10, nil)
-  recs2 = recommender2.recommend(u.first, 10, nil)
-  insert_sql = "INSERT INTO recommend_profiles (user_id, profile_id, profile_type, client_type, created_at) VALUES\n"
-  all_recs = recs.map(&:getItemID) + recs2.map(&:getItemID)
-  if all_recs.count == 0
-    no_rec_users << u.first
-    next
+    recs  = recommender.recommend(u.first, 10, nil)
+    recs2 = recommender2.recommend(u.first, 10, nil)
+    insert_sql = "INSERT INTO recommend_profiles (user_id, profile_id, profile_type, client_type, created_at) VALUES\n"
+    all_recs = recs.map(&:getItemID) + recs2.map(&:getItemID)
+    if all_recs.count == 0
+      no_rec_users << u.first
+      next
+    end
+    all_recs.uniq.each do |r|
+      insert_sql += "(#{u.first}, #{r}, 'company', 'media', NOW()),\n"
+    end
+    insert_sql[insert_sql.length-2]='; '
+    ActiveRecord::Base.connection.execute(insert_sql);
+  rescue => e
+    puts
+    raise e
   end
-  all_recs.uniq.each do |r|
-    insert_sql += "(#{u.first}, #{r}, 'company', 'media', NOW()),\n"
-  end
-  insert_sql[insert_sql.length-2]='; '
-  ActiveRecord::Base.connection.execute(insert_sql);
-rescue => e
-  puts
-  raise e
-end
 end
 
 # Pearsons + Tanimoto
@@ -195,7 +193,7 @@ end
 # 10 neigbours - 227, 1155
 # 40 neighbours - 72, 1114
 
-# 20 neigbours, Pearsons - 842, 17, all or nothing, very innacurate
+# 20 neigbours, Pearsons - 842, 17, all or nothing, semi-acurate
 # 20 neigbours, Tanimoto - 185, 292, semi-accurate, recommends quite popular companies
 # 20 neigbours, Euclidean - 73, 78, accurate
 # 20 neigbours, Spearman - 617, 25, very slow
@@ -210,6 +208,18 @@ end
 # 0 recs - 72
 # 1-9 - 33
 # 1-19 - 1121
+
+# For 3 months, E+P
+# 878 users
+# 0 recs - 92
+# 1-9 - 45
+# 1-19 - 626 (71.3% vs 77.4 all-time)
+
+# For 3 months, E+P Weighted
+# 878 users
+# 0 recs - 93
+# 1-9 - 45
+# 1-19 - 627
 
 # Test relevancy
 # SELECT r.user_id, r.profile_id, c.company_name, c.description, c.revenues, c.num_employees FROM recommend_profiles r LEFT JOIN tlo_dev.imp_company c ON (c.company_id=r.profile_id) WHERE user_id=57156
@@ -226,19 +236,19 @@ puts "\nUsers with no recommendations: #{no_rec_users.join(', ')}"
 
 abort
 puts "Media. Brand."
-ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :media,  profile_type: :brand,   days_ago: 0))
+ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :media,  profile_type: :brand,   days_ago: 90))
 
 puts "Media. Agency."
-ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :media,  profile_type: :agency,  days_ago: 0))
+ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :media,  profile_type: :agency,  days_ago: 90))
 
 puts "Agency. Company."
-ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :agency, profile_type: :company, days_ago: 0))
+ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :agency, profile_type: :company, days_ago: 90))
 
 puts "Agency. Brand."
-ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :agency, profile_type: :brand,   days_ago: 0))
+ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :agency, profile_type: :brand,   days_ago: 90))
 
 puts "Agency. Agency."
-ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :agency, profile_type: :agency,  days_ago: 0))
+ActiveRecord::Base.connection.execute(v_recomender_sql(client_type: :agency, profile_type: :agency,  days_ago: 90))
 
 data_model = ReloadFromJDBCDataModel.new(MySQLJDBCDataModel.new(data_source, "v_recommender_media_company", "user_id", "profile_id", "rating", nil))
 
