@@ -70,7 +70,7 @@ puts "Drops"
 # ActiveRecord::Base.connection.execute('DROP VIEW IF EXISTS v_recommender_agency_company;')
 # ActiveRecord::Base.connection.execute('DROP VIEW IF EXISTS v_recommender_agency_agency;')
 
-def v_recomender_sql(client_type: :media, profile_type: :brand, days_ago: 30)
+def v_recomender_sql(client_type: :media, profile_type: :brand, days_ago: 90)
   case profile_type
   when :company
     join_table         = 'imp_company'
@@ -107,7 +107,7 @@ def v_recomender_sql(client_type: :media, profile_type: :brand, days_ago: 30)
 
   since_time_subquery = ''
   if days_ago > 0
-    start_time  = (Time.now - days_ago.days).to_s(:db)
+    start_time  = Time.parse('2016-01-26').to_s(:db) #(Time.now - days_ago.days).to_s(:db)
     since_time_subquery = "AND p.created_at >= '#{start_time}'"
   end
 
@@ -130,11 +130,8 @@ puts "Media. Company."
 
 data_model = ReloadFromJDBCDataModel.new(MySQLJDBCDataModel.new(data_source, "v_recommender_media_company", "user_id", "profile_id", "rating", nil))
 
-similarity  = PearsonCorrelationSimilarity.new(data_model)
 similarity  = EuclideanDistanceSimilarity.new(data_model)
-similarity  = SpearmanCorrelationSimilarity.new(data_model)
-similarity  = LogLikelihoodSimilarity.new(data_model)
-similarity2 = TanimotoCoefficientSimilarity.new(data_model)
+similarity2 = PearsonCorrelationSimilarity.new(data_model)
 neighborhood  = NearestNUserNeighborhood.new(20, similarity, data_model) # <FIRST ARG> is nearest N users to a given user.
 neighborhood2 = NearestNUserNeighborhood.new(20, similarity2, data_model) # <FIRST ARG> is nearest N users to a given user.
 recommender =  GenericUserBasedRecommender.new(data_model, neighborhood, similarity)
@@ -172,7 +169,6 @@ begin
   insert_sql = "INSERT INTO recommend_profiles (user_id, profile_id, profile_type, client_type, created_at) VALUES\n"
   all_recs = recs.map(&:getItemID) + recs2.map(&:getItemID)
   if all_recs.count == 0
-    # puts " 0 recommendations for #{u.first}"
     no_rec_users << u.first
     next
   end
@@ -187,28 +183,42 @@ rescue => e
 end
 end
 
+# Pearsons + Tanimoto
 # Default: 20 neigbours
 # 1448 total
 # 0 rec - 135 users
 # SELECT user_id, COUNT(*) c FROM recommend_profiles GROUP BY user_id HAVING c < 20;
 # 1-19 recs - 1173 users
-# 1-10 recs - 103
+# 1-9 recs - 103
 
 # 5 neigbours - 450, 969
 # 10 neigbours - 227, 1155
 # 40 neighbours - 72, 1114
 
-# 20 neigbours, Pearsons - 842, 606
-# 20.neigbours, Tanimoto - 185, 1263
-# 20.neigbours, Euclidean - 
-# 20.neigbours, Spearman - 
-# 20.neigbours, LogLikelihood - 
+# 20 neigbours, Pearsons - 842, 17, all or nothing, very innacurate
+# 20 neigbours, Tanimoto - 185, 292, semi-accurate, recommends quite popular companies
+# 20 neigbours, Euclidean - 73, 78, accurate
+# 20 neigbours, Spearman - 617, 25, very slow
+# 20 neigbours, LogLikelihood - 115, 82, semi-accurate, recommends too popular companies
+
+# Euclidean + Tanimoto
+# 0 recs - 71
+# 1-9 - 33
+# 1-19 - 1220
+
+# Euclidean + Pearsons
+# 0 recs - 72
+# 1-9 - 33
+# 1-19 - 1121
 
 # Test relevancy
-# SELECT r.user_id, r.profile_id, c.company_name, c.description, c.revenues, c.num_employees FROM recommend_profiles r LEFT JOIN tlo_dev.imp_company c ON (c.company_id=r.profile_id) WHERE user_id=198128
+# SELECT r.user_id, r.profile_id, c.company_name, c.description, c.revenues, c.num_employees FROM recommend_profiles r LEFT JOIN tlo_dev.imp_company c ON (c.company_id=r.profile_id) WHERE user_id=57156
 # UNION
-# SELECT p.user_id, p.profile_id, c.company_name, c.description, c.revenues, c.num_employees FROM profile_views p LEFT JOIN tlo_dev.imp_company c ON (c.company_id=p.profile_id) WHERE profile_type='company' AND user_id=198128
-# LIMIT 30;
+# SELECT '-','-','-','-','-','-'
+# UNION
+# SELECT p.user_id, p.profile_id, c.company_name, c.description, c.revenues, c.num_employees FROM profile_views p LEFT JOIN tlo_dev.imp_company c ON (c.company_id=p.profile_id) WHERE profile_type='company' AND user_id=57156
+# LIMIT 100;
+
 
 # count users with no recommendations, change neighbours to 5 and 40 and compare
 puts "\nUsers with no recommendations: #{no_rec_users.count}"
@@ -253,13 +263,8 @@ recommender.recommend(23221, 10, nil).each{|s| print "#{s.getItemID},"}; puts;
 recommender.recommend(59210, 10, nil).each{|s| print "#{s.getItemID},"}; puts;
 recommender.recommend(191814, 10, nil).each{|s| print "#{s.getItemID},"}; puts;
 
-# separately company, brand, agency_id
-# separate user by pillar. example of TV for media and kids for agencies
-# include follows?
-# look at last 30 days
-# Run different algorythms for the same user, uniq results
-# Log user and number of recommendations given
-# Join profile names to test
+
+# look at last 90 days - 2016-01-26 on dev
 # Find business profiles based on contact views
 
 # Test
