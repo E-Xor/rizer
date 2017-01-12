@@ -38,7 +38,7 @@ puts "MySQL"
 java_import org.apache.mahout.cf.taste.impl.model.jdbc.MySQLJDBCDataModel
 java_import org.apache.mahout.cf.taste.impl.model.jdbc.ReloadFromJDBCDataModel
 # apt-get install libmysql-java mysql-client -y
-# CLASSPATH=$CLASSPATH:/usr/share/java/
+# export CLASSPATH=$CLASSPATH:.:/usr/share/java/mysql.jar
 # export CLASSPATH
 java_import com.mysql.jdbc.jdbc2.optional.MysqlDataSource
 
